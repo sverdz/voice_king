@@ -1,0 +1,53 @@
+{
+  "ai_provider": "claude",
+
+  "claude": {
+    "api_key": "YOUR_CLAUDE_API_KEY_HERE",
+    "model": "claude-3-haiku-20240307"
+  },
+
+  "openai": {
+    "api_key": "YOUR_OPENAI_API_KEY_HERE",
+    "model": "gpt-4o-mini"
+  },
+
+  "apps": {
+    "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "notepad": "notepad.exe",
+    "explorer": "explorer.exe",
+    "calculator": "calc.exe",
+    "vscode": "C:\\Program Files\\Microsoft VS Code\\Code.exe"
+  },
+
+  "folders": {
+    "downloads": "C:\\Users\\YourUsername\\Downloads",
+    "documents": "C:\\Users\\YourUsername\\Documents",
+    "desktop": "C:\\Users\\YourUsername\\Desktop",
+    "projects": "C:\\Users\\YourUsername\\Projects"
+  },
+
+  "search_providers": {
+    "web_search": "google",
+    "ai": "chatgpt_api"
+  },
+
+  "macros": {
+    "work_mode": {
+      "description": "Відкрити робочий режим",
+      "actions": [
+        {"type": "open_app", "app_id": "vscode"},
+        {"type": "open_app", "app_id": "chrome"},
+        {"type": "volume", "mode": "set", "value": 30}
+      ]
+    }
+  },
+
+  "tts_enabled": true,
+  "language": "uk-UA",
+
+  "audio": {
+    "stt_model": "base",
+    "wake_word": "комп'ютер",
+    "confidence_threshold": 0.7
+  }
+}

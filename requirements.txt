@@ -1,0 +1,22 @@
+# AI Providers
+anthropic>=0.18.0        # Claude API
+openai>=1.12.0           # ChatGPT API
+
+# Speech Recognition & Synthesis
+faster-whisper>=0.10.0   # Local STT (Speech-to-Text)
+pyttsx3>=2.90           # Text-to-Speech
+pyaudio>=0.2.13         # Audio I/O
+sounddevice>=0.4.6      # Audio recording
+
+# Wake Word Detection (optional)
+pvporcupine>=3.0.0      # Picovoice Porcupine for wake word
+
+# Windows Automation
+pyautogui>=0.9.54       # Keyboard/mouse automation
+pywinauto>=0.6.8        # Windows GUI automation
+psutil>=5.9.0           # Process management
+pycaw>=20230407         # Windows audio control
+
+# Utilities
+python-dotenv>=1.0.0    # Environment variables
+colorama>=0.4.6         # Colored console output
