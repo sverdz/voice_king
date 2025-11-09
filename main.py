@@ -11,7 +11,7 @@ init(autoreset=True)
 
 # Імпорт модулів проекту
 from src.config_loader import ConfigLoader
-from src.audio import SpeechToText, TextToSpeech
+from src.audio import SpeechToText, TextToSpeech, WakeWordDetector
 from src.executor import CommandExecutor
 
 
@@ -186,28 +186,100 @@ class VoiceAssistant:
             except Exception as e:
                 print(f"{Fore.RED}Помилка: {e}")
 
+    def run_wake_word_mode(self, access_key: str, duration: int = 5):
+        """
+        Запустити в режимі з wake word detection
+
+        Args:
+            access_key: Picovoice access key
+            duration: Тривалість запису після детекції wake word
+        """
+        if not self.stt:
+            print(f"{Fore.RED}STT не ініціалізований.")
+            return
+
+        print(f"{Fore.CYAN}Режим: Wake Word Detection")
+        print(f"{Fore.YELLOW}Ініціалізація детектора кодового слова...\n")
+
+        try:
+            # Отримати wake word з конфігу або використати за замовчуванням
+            audio_config = self.config.get("audio", {})
+            wake_words = audio_config.get("wake_words", ["porcupine"])
+
+            detector = WakeWordDetector(
+                access_key=access_key,
+                keywords=wake_words,
+                sensitivities=[0.5] * len(wake_words)
+            )
+
+            def on_wake_word(keyword_index):
+                """Callback при детекції wake word"""
+                print(f"{Fore.GREEN}\n🎤 Слухаю команду... ({duration} сек)")
+
+                if self.tts:
+                    self.tts.speak("Слухаю", block=False)
+
+                # Записати команду
+                command_text = self.stt.listen_and_transcribe(duration=duration)
+
+                if command_text:
+                    self.process_command(command_text)
+                else:
+                    print(f"{Fore.RED}Не вдалося розпізнати команду")
+                    if self.tts:
+                        self.tts.speak("Не розумію")
+
+                print(f"{Fore.CYAN}\nОчікую кодове слово...\n")
+
+            # Запустити детектор
+            detector.start_listening(on_wake_word)
+
+        except KeyboardInterrupt:
+            print(f"\n{Fore.CYAN}До побачення!")
+        except Exception as e:
+            print(f"{Fore.RED}Помилка wake word detection: {e}")
+            print(f"{Fore.YELLOW}Переконайтесь що у вас є access key від Picovoice")
+            print(f"{Fore.YELLOW}Отримати можна на: https://console.picovoice.ai/")
+
 
 def main():
     """Головна функція"""
     # Перевірити аргументи командного рядка
     mode = "text"  # За замовчуванням текстовий режим
+    wake_word_key = None
 
     if len(sys.argv) > 1:
         if sys.argv[1] in ["--voice", "-v"]:
             mode = "voice"
+        elif sys.argv[1] in ["--wake-word", "-w"]:
+            mode = "wake_word"
+            if len(sys.argv) > 2:
+                wake_word_key = sys.argv[2]
+            else:
+                print(f"{Fore.RED}Error: --wake-word requires Picovoice access key")
+                print(f"{Fore.YELLOW}Usage: python main.py --wake-word YOUR_ACCESS_KEY")
+                print(f"{Fore.YELLOW}Get key from: https://console.picovoice.ai/")
+                sys.exit(1)
         elif sys.argv[1] in ["--help", "-h"]:
             print("Voice King - Голосовий Асистент")
             print("\nВикористання:")
-            print("  python main.py          - Текстовий режим")
-            print("  python main.py --voice  - Голосовий режим")
-            print("  python main.py --help   - Ця довідка")
+            print("  python main.py                          - Текстовий режим")
+            print("  python main.py --voice                  - Голосовий режим (кнопка)")
+            print("  python main.py --wake-word <ACCESS_KEY> - Режим з wake word")
+            print("  python main.py --help                   - Ця довідка")
+            print("\nПриклади:")
+            print("  python main.py")
+            print("  python main.py --voice")
+            print("  python main.py --wake-word sk-xxxxx")
             return
 
     # Створити та запустити асистента
     try:
         assistant = VoiceAssistant()
 
-        if mode == "voice":
+        if mode == "wake_word":
+            assistant.run_wake_word_mode(access_key=wake_word_key, duration=5)
+        elif mode == "voice":
             assistant.run_voice(duration=5)
         else:
             assistant.run_interactive()

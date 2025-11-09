@@ -4,7 +4,34 @@ Command Executor - виконання команд операційної сис
 import subprocess
 import os
 import platform
+import time
 from typing import Dict, Any
+
+# Імпорти для автоматизації (опціональні)
+try:
+    import pyautogui
+    PYAUTOGUI_AVAILABLE = True
+except ImportError:
+    PYAUTOGUI_AVAILABLE = False
+
+try:
+    from pywinauto import Application
+    from pywinauto.findwindows import find_windows
+    PYWINAUTO_AVAILABLE = True
+except ImportError:
+    PYWINAUTO_AVAILABLE = False
+
+try:
+    # Для Windows керування гучністю
+    if platform.system() == "Windows":
+        from ctypes import cast, POINTER
+        from comtypes import CLSCTX_ALL
+        from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+        PYCAW_AVAILABLE = True
+    else:
+        PYCAW_AVAILABLE = False
+except ImportError:
+    PYCAW_AVAILABLE = False
 
 
 class CommandExecutor:
@@ -16,6 +43,17 @@ class CommandExecutor:
         self.folders = config.get("folders", {})
         self.macros = config.get("macros", {})
         self.is_windows = platform.system() == "Windows"
+
+        # Ініціалізація volume interface для Windows
+        self.volume_interface = None
+        if self.is_windows and PYCAW_AVAILABLE:
+            try:
+                devices = AudioUtilities.GetSpeakers()
+                interface = devices.Activate(
+                    IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                self.volume_interface = cast(interface, POINTER(IAudioEndpointVolume))
+            except Exception as e:
+                print(f"Warning: Failed to init volume control: {e}")
 
     def execute(self, intent_result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -85,31 +123,193 @@ class CommandExecutor:
             }
 
     def _handle_switch_app(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """Переключитись на вікно програми (потребує pywinauto)"""
-        # TODO: реалізувати через pywinauto
-        return {
-            "success": False,
-            "message": "switch_app not implemented yet - requires pywinauto"
-        }
+        """Переключитись на вікно програми"""
+        if not PYWINAUTO_AVAILABLE:
+            return {
+                "success": False,
+                "message": "pywinauto not installed. Run: pip install pywinauto"
+            }
+
+        target = action.get("target", "")
+        if not target:
+            return {"success": False, "message": "No target window specified"}
+
+        try:
+            # Знайти вікна з назвою що містить target
+            windows = find_windows(title_re=f".*{target}.*")
+
+            if not windows:
+                return {
+                    "success": False,
+                    "message": f"Window not found: {target}"
+                }
+
+            # Активувати перше знайдене вікно
+            from pywinauto.application import Application
+            app = Application().connect(handle=windows[0])
+            app.top_window().set_focus()
+
+            return {
+                "success": True,
+                "message": f"Switched to window: {target}"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Failed to switch window: {str(e)}"
+            }
 
     def _handle_hotkey(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """Натиснути гаряче сполучення клавіш (потребує pyautogui)"""
-        # TODO: реалізувати через pyautogui
+        """Натиснути гаряче сполучення клавіш"""
+        if not PYAUTOGUI_AVAILABLE:
+            return {
+                "success": False,
+                "message": "pyautogui not installed. Run: pip install pyautogui"
+            }
+
         keys = action.get("keys", [])
-        return {
-            "success": False,
-            "message": f"hotkey not implemented yet - would press: {keys}"
-        }
+        if not keys:
+            return {"success": False, "message": "No keys specified"}
+
+        try:
+            # Конвертувати ключі в формат pyautogui
+            key_mapping = {
+                "ctrl": "ctrl",
+                "control": "ctrl",
+                "alt": "alt",
+                "shift": "shift",
+                "win": "win",
+                "windows": "win",
+                "enter": "enter",
+                "tab": "tab",
+                "esc": "esc",
+                "escape": "esc",
+                "space": "space",
+                "f4": "f4",
+                "d": "d",
+                "s": "s",
+                "c": "c",
+                "v": "v",
+                "x": "x",
+                "z": "z",
+                "a": "a"
+            }
+
+            mapped_keys = [key_mapping.get(k.lower(), k.lower()) for k in keys]
+
+            # Натиснути комбінацію
+            if len(mapped_keys) == 1:
+                pyautogui.press(mapped_keys[0])
+            else:
+                pyautogui.hotkey(*mapped_keys)
+
+            return {
+                "success": True,
+                "message": f"Pressed: {'+'.join(keys)}"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Failed to press hotkey: {str(e)}"
+            }
 
     def _handle_volume(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """Керування гучністю (потребує pycaw на Windows)"""
-        # TODO: реалізувати через pycaw
+        """Керування гучністю"""
+        if not self.is_windows:
+            # Для Linux можна використати amixer
+            return self._handle_volume_linux(action)
+
+        if not PYCAW_AVAILABLE or not self.volume_interface:
+            return {
+                "success": False,
+                "message": "pycaw not installed or failed to init. Run: pip install pycaw"
+            }
+
         mode = action.get("mode")
         value = action.get("value", 10)
-        return {
-            "success": False,
-            "message": f"volume control not implemented yet - mode: {mode}, value: {value}"
-        }
+
+        try:
+            # Отримати поточну гучність (0.0 - 1.0)
+            current_volume = self.volume_interface.GetMasterVolumeLevelScalar()
+
+            if mode == "mute":
+                # Перемкнути mute
+                is_muted = self.volume_interface.GetMute()
+                self.volume_interface.SetMute(not is_muted, None)
+                return {
+                    "success": True,
+                    "message": f"Volume {'unmuted' if is_muted else 'muted'}"
+                }
+
+            elif mode == "set":
+                # Встановити конкретну гучність (value в відсотках)
+                new_volume = max(0.0, min(1.0, value / 100.0))
+                self.volume_interface.SetMasterVolumeLevelScalar(new_volume, None)
+                return {
+                    "success": True,
+                    "message": f"Volume set to {int(new_volume * 100)}%"
+                }
+
+            elif mode == "up":
+                # Збільшити гучність
+                new_volume = min(1.0, current_volume + (value / 100.0))
+                self.volume_interface.SetMasterVolumeLevelScalar(new_volume, None)
+                return {
+                    "success": True,
+                    "message": f"Volume increased to {int(new_volume * 100)}%"
+                }
+
+            elif mode == "down":
+                # Зменшити гучність
+                new_volume = max(0.0, current_volume - (value / 100.0))
+                self.volume_interface.SetMasterVolumeLevelScalar(new_volume, None)
+                return {
+                    "success": True,
+                    "message": f"Volume decreased to {int(new_volume * 100)}%"
+                }
+
+            else:
+                return {
+                    "success": False,
+                    "message": f"Unknown volume mode: {mode}"
+                }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Failed to control volume: {str(e)}"
+            }
+
+    def _handle_volume_linux(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        """Керування гучністю на Linux через amixer"""
+        mode = action.get("mode")
+        value = action.get("value", 10)
+
+        try:
+            if mode == "mute":
+                subprocess.run(["amixer", "set", "Master", "toggle"], check=True)
+                return {"success": True, "message": "Volume muted/unmuted"}
+
+            elif mode == "set":
+                subprocess.run(["amixer", "set", "Master", f"{value}%"], check=True)
+                return {"success": True, "message": f"Volume set to {value}%"}
+
+            elif mode == "up":
+                subprocess.run(["amixer", "set", "Master", f"{value}%+"], check=True)
+                return {"success": True, "message": f"Volume increased by {value}%"}
+
+            elif mode == "down":
+                subprocess.run(["amixer", "set", "Master", f"{value}%-"], check=True)
+                return {"success": True, "message": f"Volume decreased by {value}%"}
+
+            else:
+                return {"success": False, "message": f"Unknown volume mode: {mode}"}
+
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Failed to control volume (Linux): {str(e)}"
+            }
 
     def _handle_system_toggle(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Перемикання системних налаштувань"""
@@ -157,13 +357,33 @@ class CommandExecutor:
         }
 
     def _handle_insert_text(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """Вставити текст (потребує pyautogui)"""
-        # TODO: реалізувати через pyautogui
-        text = action.get("text")
-        return {
-            "success": False,
-            "message": f"insert_text not implemented yet - text: {text[:50]}..."
-        }
+        """Вставити текст"""
+        if not PYAUTOGUI_AVAILABLE:
+            return {
+                "success": False,
+                "message": "pyautogui not installed. Run: pip install pyautogui"
+            }
+
+        text = action.get("text", "")
+        if not text:
+            return {"success": False, "message": "No text to insert"}
+
+        try:
+            # Невелика затримка щоб користувач встиг переключитись на потрібне вікно
+            time.sleep(0.3)
+
+            # Вставити текст
+            pyautogui.write(text, interval=0.05)
+
+            return {
+                "success": True,
+                "message": f"Inserted text: {text[:50]}..."
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Failed to insert text: {str(e)}"
+            }
 
     def _handle_run_macro(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Запустити макрос (послідовність дій)"""

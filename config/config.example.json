@@ -47,7 +47,8 @@
 
   "audio": {
     "stt_model": "base",
-    "wake_word": "комп'ютер",
+    "wake_words": ["porcupine", "computer"],
+    "picovoice_access_key": "YOUR_PICOVOICE_KEY_HERE",
     "confidence_threshold": 0.7
   }
 }
